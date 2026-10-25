@@ -1,0 +1,106 @@
+version: "3.9"
+
+# ==============================================================================
+# Multi-Tier Microservice Orchestration Stack
+# Author: Sudheer K. Mohammed
+# ==============================================================================
+
+services:
+  # ----------------------------------------------------------------------------
+  # 1. DATABASE SERVICE: PostgreSQL
+  # ----------------------------------------------------------------------------
+  postgres_db:
+    image: postgres:16-alpine
+    container_name: production_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-dbadmin}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-SuperSecretSecurePass123!}
+      POSTGRES_DB: ${DB_NAME:-scientific_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - backend_net
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2048M
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-dbadmin} -d ${DB_NAME:-scientific_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ----------------------------------------------------------------------------
+  # 2. CACHING SERVICE: Redis
+  # ----------------------------------------------------------------------------
+  redis_cache:
+    image: redis:7.2-alpine
+    container_name: production_redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:-RedisSecurePass999!}"]
+    volumes:
+      - redis_data:/data
+    networks:
+      - backend_net
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-RedisSecurePass999!}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+  # ----------------------------------------------------------------------------
+  # 3. WEB API SERVICE: FastAPI
+  # ----------------------------------------------------------------------------
+  fastapi_app:
+    build:
+      context: ../01_docker_web_api
+      dockerfile: Dockerfile
+    container_name: production_api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://${DB_USER:-dbadmin}:${DB_PASSWORD:-SuperSecretSecurePass123!}@postgres_db:5432/${DB_NAME:-scientific_db}
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-RedisSecurePass999!}@redis_cache:6379/0
+      - ENVIRONMENT=production
+    networks:
+      - frontend_net
+      - backend_net
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+      redis_cache:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1024M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+networks:
+  frontend_net:
+    driver: bridge
+  backend_net:
+    driver: bridge
+    internal: true # Disables external outbound routing for zero-trust database security
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local

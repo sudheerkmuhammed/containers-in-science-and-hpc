@@ -1,0 +1,62 @@
+Bootstrap: docker
+From: ubuntu:22.04
+
+%labels
+    Author "Sudheer K. Mohammed"
+    Title "Optimized Scientific Python Stack with Micromamba"
+    Version "2.0.0"
+
+%help
+    This container provides an optimized scientific Python stack containing
+    NumPy, SciPy, Pandas, Numba, and Matplotlib installed via Conda-Forge.
+
+    Usage:
+        apptainer run scientific_python.sif [script.py]
+        apptainer exec scientific_python.sif python3 -c "import numpy; print(numpy.__version__)"
+
+%environment
+    export MAMBA_ROOT_PREFIX=/opt/conda
+    export PATH=/opt/conda/bin:$PATH
+    export LC_ALL=C
+    export PYTHONUNBUFFERED=1
+
+%post
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update && apt-get install -y --no-install-recommends \
+        bzip2 \
+        ca-certificates \
+        curl \
+        wget \
+        && rm -rf /var/lib/apt/lists/*
+
+    # Install Micromamba for fast, clean conda environment resolution
+    curl -Ls https://micro.mamba.pm/api/micromamba/linux-64/latest | tar -xvj bin/micromamba
+    mv bin/micromamba /usr/local/bin/micromamba
+    rm -rf bin
+
+    # Initialize environment
+    export MAMBA_ROOT_PREFIX=/opt/conda
+    micromamba create -y -n base -c conda-forge \
+        python=3.11 \
+        numpy \
+        scipy \
+        pandas \
+        scikit-learn \
+        numba
+
+    # Clean package archives
+    micromamba clean -all -y
+
+%test
+    export MAMBA_ROOT_PREFIX=/opt/conda
+    export PATH=/opt/conda/bin:$PATH
+    python3 -c "import numpy; import scipy; import pandas; print('All scientific imports verified!')"
+
+%runscript
+    export MAMBA_ROOT_PREFIX=/opt/conda
+    export PATH=/opt/conda/bin:$PATH
+    if [ $# -eq 0 ]; then
+        exec python3
+    else
+        exec python3 "$@"
+    fi

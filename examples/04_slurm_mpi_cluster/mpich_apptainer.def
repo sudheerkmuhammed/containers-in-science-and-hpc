@@ -1,0 +1,30 @@
+Bootstrap: docker
+From: ubuntu:22.04
+
+%labels
+    Author "Sudheer K. Mohammed"
+    Title "MPICH Hybrid ABI Compatible Container"
+    Version "1.0.0"
+
+%files
+    mpi_hello_world.c /tmp/mpi_hello_world.c
+
+%post
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        libmpich-dev \
+        mpich \
+        ca-certificates \
+        && rm -rf /var/lib/apt/lists/*
+
+    # Compile the MPI benchmark
+    mpicc -O3 /tmp/mpi_hello_world.c -o /usr/local/bin/mpi_hello_world
+    rm /tmp/mpi_hello_world.c
+
+%environment
+    export LC_ALL=C
+    export PATH=/usr/local/bin:$PATH
+
+%runscript
+    exec /usr/local/bin/mpi_hello_world "$@"

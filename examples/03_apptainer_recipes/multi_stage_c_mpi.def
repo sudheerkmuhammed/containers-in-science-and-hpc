@@ -1,0 +1,56 @@
+# ==============================================================================
+# Multi-Stage Apptainer Definition File
+# Author: Sudheer K. Mohammed
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# STAGE 1: Compiler & Build Tools
+# ------------------------------------------------------------------------------
+Bootstrap: docker
+From: ubuntu:22.04
+Stage: build_stage
+
+%files
+    ../04_slurm_mpi_cluster/mpi_hello_world.c /tmp/mpi_hello_world.c
+
+%post
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        libopenmpi-dev \
+        openmpi-bin
+
+    # Compile with maximum optimization
+    mpicc -O3 /tmp/mpi_hello_world.c -o /usr/local/bin/mpi_hello_world
+
+# ------------------------------------------------------------------------------
+# STAGE 2: Minimal Production Runtime Image
+# ------------------------------------------------------------------------------
+Bootstrap: docker
+From: ubuntu:22.04
+Stage: runtime_stage
+
+# Copy only the compiled binary from Stage 1!
+%files from build_stage
+    /usr/local/bin/mpi_hello_world /usr/local/bin/mpi_hello_world
+
+%post
+    export DEBIAN_FRONTEND=noninteractive
+    # Install only the runtime shared libraries, shedding compilers (gcc/make)
+    apt-get update && apt-get install -y --no-install-recommends \
+        libopenmpi3 \
+        openmpi-bin \
+        ca-certificates \
+        && rm -rf /var/lib/apt/lists/*
+
+%environment
+    export LC_ALL=C
+    export PATH=/usr/local/bin:$PATH
+
+%runscript
+    exec /usr/local/bin/mpi_hello_world "$@"
+
+%labels
+    Author "Sudheer K. Mohammed"
+    Version "1.0.0"
+    Description "Lean multi-stage compiled OpenMPI container"
